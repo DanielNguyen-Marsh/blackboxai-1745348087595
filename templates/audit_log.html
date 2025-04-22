@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nhật ký kiểm toán - Microvita</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+</head>
+<body class="bg-gray-100 font-sans leading-normal tracking-normal">
+    <div class="container mx-auto px-4 py-6">
+        <h1 class="text-3xl font-bold mb-6 text-gray-800">Nhật ký kiểm toán</h1>
+        <div class="bg-white shadow rounded-lg p-6">
+            <div class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <input id="searchInput" type="text" placeholder="Tìm kiếm người dùng hoặc hành động..." 
+                    class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <input id="startDate" type="date" class="w-full px-4 py-2 border border-gray-300 rounded" />
+                <input id="endDate" type="date" class="w-full px-4 py-2 border border-gray-300 rounded" />
+            </div>
+            <div class="mb-4">
+                <select id="actionFilter" class="w-full px-4 py-2 border border-gray-300 rounded">
+                    <option value="">Tất cả hành động</option>
+                </select>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full bg-white">
+                    <thead>
+                        <tr>
+                            <th class="py-2 px-4 border-b border-gray-200 text-left text-sm font-semibold text-gray-700">Thời gian</th>
+                            <th class="py-2 px-4 border-b border-gray-200 text-left text-sm font-semibold text-gray-700">Người dùng</th>
+                            <th class="py-2 px-4 border-b border-gray-200 text-left text-sm font-semibold text-gray-700">Hành động</th>
+                            <th class="py-2 px-4 border-b border-gray-200 text-left text-sm font-semibold text-gray-700">Địa chỉ IP</th>
+                            <th class="py-2 px-4 border-b border-gray-200 text-left text-sm font-semibold text-gray-700">Thông tin thêm</th>
+                        </tr>
+                    </thead>
+                    <tbody id="auditLogTableBody" class="text-gray-700">
+                        <!-- Audit log entries will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-4 flex justify-between items-center">
+                <button id="prevPageBtn" class="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50" disabled>Trước</button>
+                <span id="pageInfo" class="text-sm text-gray-600"></span>
+                <button id="nextPageBtn" class="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50" disabled>Sau</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const apiUrl = '/api/audit-logs/';
+        let currentPage = 1;
+        let totalPages = 1;
+        let searchQuery = '';
+        let startDate = '';
+        let endDate = '';
+        let actionFilter = '';
+
+        const auditLogTableBody = document.getElementById('auditLogTableBody');
+        const prevPageBtn = document.getElementById('prevPageBtn');
+        const nextPageBtn = document.getElementById('nextPageBtn');
+        const pageInfo = document.getElementById('pageInfo');
+        const searchInput = document.getElementById('searchInput');
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        const actionFilterSelect = document.getElementById('actionFilter');
+
+        async function fetchAuditLogs(page = 1) {
+            const url = new URL(apiUrl, window.location.origin);
+            url.searchParams.append('page', page);
+            if (searchQuery) {
+                url.searchParams.append('search', searchQuery);
+            }
+            if (startDate) {
+                url.searchParams.append('timestamp__gte', startDate);
+            }
+            if (endDate) {
+                url.searchParams.append('timestamp__lte', endDate);
+            }
+            if (actionFilter) {
+                url.searchParams.append('action', actionFilter);
+            }
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                    },
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    throw new Error('Lỗi khi tải dữ liệu');
+                }
+                const data = await response.json();
+                renderAuditLogs(data.results);
+                currentPage = page;
+                totalPages = Math.ceil(data.count / 10);
+                updatePagination();
+                updateActionFilterOptions(data.results);
+            } catch (error) {
+                console.error(error);
+                auditLogTableBody.innerHTML = '<tr><td colspan="5" class="text-center text-red-500">Không thể tải dữ liệu nhật ký kiểm toán.</td></tr>';
+            }
+        }
+
+        function renderAuditLogs(logs) {
+            auditLogTableBody.innerHTML = '';
+            if (logs.length === 0) {
+                auditLogTableBody.innerHTML = '<tr><td colspan="5" class="text-center">Không có dữ liệu.</td></tr>';
+                return;
+            }
+            logs.forEach(log => {
+                const row = document.createElement('tr');
+                row.classList.add('border-b', 'border-gray-200');
+                row.innerHTML = `
+                    <td class="py-2 px-4">${new Date(log.timestamp).toLocaleString('vi-VN')}</td>
+                    <td class="py-2 px-4">${log.user || 'Hệ thống'}</td>
+                    <td class="py-2 px-4 break-words max-w-xs">${log.action}</td>
+                    <td class="py-2 px-4">${log.ip_address || ''}</td>
+                    <td class="py-2 px-4 break-words max-w-xs">${JSON.stringify(log.additional_data) || ''}</td>
+                `;
+                auditLogTableBody.appendChild(row);
+            });
+        }
+
+        function updatePagination() {
+            pageInfo.textContent = `Trang ${currentPage} / ${totalPages}`;
+            prevPageBtn.disabled = currentPage <= 1;
+            nextPageBtn.disabled = currentPage >= totalPages;
+        }
+
+        function updateActionFilterOptions(logs) {
+            const actions = new Set();
+            logs.forEach(log => {
+                if (log.action) {
+                    actions.add(log.action);
+                }
+            });
+            // Clear existing options except the first
+            while (actionFilterSelect.options.length > 1) {
+                actionFilterSelect.remove(1);
+            }
+            actions.forEach(action => {
+                const option = document.createElement('option');
+                option.value = action;
+                option.textContent = action;
+                actionFilterSelect.appendChild(option);
+            });
+        }
+
+        prevPageBtn.addEventListener('click', () => {
+            if (currentPage > 1) {
+                fetchAuditLogs(currentPage - 1);
+            }
+        });
+
+        nextPageBtn.addEventListener('click', () => {
+            if (currentPage < totalPages) {
+                fetchAuditLogs(currentPage + 1);
+            }
+        });
+
+        searchInput.addEventListener('input', (e) => {
+            searchQuery = e.target.value;
+            fetchAuditLogs(1);
+        });
+
+        startDateInput.addEventListener('change', (e) => {
+            startDate = e.target.value;
+            fetchAuditLogs(1);
+        });
+
+        endDateInput.addEventListener('change', (e) => {
+            endDate = e.target.value;
+            fetchAuditLogs(1);
+        });
+
+        actionFilterSelect.addEventListener('change', (e) => {
+            actionFilter = e.target.value;
+            fetchAuditLogs(1);
+        });
+
+        // Initial load
+        fetchAuditLogs();
+    </script>
+</body>
+</html>
