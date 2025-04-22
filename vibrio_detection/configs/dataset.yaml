@@ -1,0 +1,6 @@
+path: D:\DownLoad\New folder\Microvita\dataset
+train: images/train
+val: images/val
+
+nc: 2
+names: ['v_para', 'v_algi']
